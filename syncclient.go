@@ -2,14 +2,13 @@ package kinesumer
 
 import (
 	"context"
+	"log"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
-
-	"github.com/daangn/kinesumer/pkg/collection"
 )
 
 func (k *Kinesumer) loopSyncClient() {
@@ -23,22 +22,18 @@ func (k *Kinesumer) loopSyncClient() {
 			ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 
 			if err := k.pingAliveness(ctx); err != nil {
-				log.Err(err).
-					Msg("kinesumer: failed to pingAliveness")
+				log.Println("kinesumer: failed to pingAliveness", "error", err)
 			}
 			if err := k.syncShardInfo(ctx); err != nil {
-				log.Err(err).
-					Msg("kinesumer: failed to syncShardInfo")
+				log.Println("kinesumer: failed to syncShardInfo", "error", err)
 			}
 
 			if k.leader {
 				if err := k.doLeadershipSyncShardIDs(ctx); err != nil {
-					log.Err(err).
-						Msg("kinesumer: failed to doLeadershipSyncShardIDs")
+					log.Println("kinesumer: failed to doLeadershipSyncShardIDs", "error", err)
 				}
 				if err := k.doLeadershipPruneClients(ctx); err != nil {
-					log.Err(err).
-						Msg("kinesumer: failed to doLeadershipPruneClients")
+					log.Println("kinesumer: failed to doLeadershipPruneClients", "error", err)
 				}
 			}
 			cancel()
@@ -47,8 +42,7 @@ func (k *Kinesumer) loopSyncClient() {
 			ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 
 			if err := k.stateStore.DeregisterClient(ctx, k.id); err != nil {
-				log.Err(err).
-					Msg("kinesumer: failed to DeregisterClient")
+				log.Println("kinesumer: failed to DeregisterClient", "error", err)
 			}
 			cancel()
 			return
@@ -66,8 +60,11 @@ func (k *Kinesumer) pingAliveness(ctx context.Context) error {
 func (k *Kinesumer) syncShardInfo(ctx context.Context) error {
 	clientIDs, err := k.stateStore.ListAllAliveClientIDs(ctx)
 	if err != nil {
+		log.Println("failed to list alive clients", "error", err)
 		return errors.WithStack(err)
 	}
+
+	log.Println("clientIDs", clientIDs)
 
 	// Skip if there are no alive clients.
 	numOfClient := len(clientIDs)
@@ -88,6 +85,7 @@ func (k *Kinesumer) syncShardInfo(ctx context.Context) error {
 	// Update shard information.
 	for _, stream := range k.streams {
 		if err := k.syncShardInfoForStream(ctx, stream, idx, numOfClient); err != nil {
+			log.Println("failed to sync shard info for stream", "error", err)
 			return errors.WithStack(err)
 		}
 	}
@@ -100,11 +98,13 @@ func (k *Kinesumer) syncShardInfoForStream(
 	shards, err := k.stateStore.GetShards(ctx, stream)
 	if errors.Is(err, ErrNoShardCache) {
 		// If there are no cache, fetch shards from Kinesis directly.
-		shards, err = k.listShards(stream)
+		shards, err = k.listShards(ctx, stream)
 		if err != nil {
+			log.Println("failed to list shards from stream", "error", err)
 			return errors.WithStack(err)
 		}
 	} else if err != nil {
+		log.Println("failed to get shards from cache", "error", err)
 		return errors.WithStack(err)
 	}
 
@@ -116,7 +116,7 @@ func (k *Kinesumer) syncShardInfoForStream(
 	splitEndIdx := int(math.Round(float64(idx+1) * r))
 	newShards := shards[splitStartIdx:splitEndIdx]
 
-	if collection.EqualsSS(k.shards[stream].ids(), newShards.ids()) {
+	if slices.Equal(k.shards[stream].ids(), newShards.ids()) {
 		return nil
 	}
 
@@ -136,15 +136,17 @@ func (k *Kinesumer) syncShardInfoForStream(
 	// Delete uninterested shard ids.
 	shardIDs := k.shards[stream].ids()
 	k.nextIters[stream].Range(func(key, _ interface{}) bool {
-		if !collection.ContainsS(shardIDs, key.(string)) {
+		if !slices.Contains(shardIDs, key.(string)) {
 			k.nextIters[stream].Delete(key)
 		}
+
 		return true
 	})
 
 	// Sync shard check points.
 	seqMap, err := k.stateStore.ListCheckPoints(ctx, stream, shardIDs)
 	if err != nil {
+		log.Println("failed to list check points", "error", err)
 		return errors.WithStack(err)
 	}
 
@@ -165,8 +167,8 @@ func (k *Kinesumer) syncShardInfoForStream(
 	for id, seq := range seqMap {
 		k.checkPoints[stream].Store(id, seq)
 	}
-	log.Info().
-		Str("stream", stream).
-		Msgf("shard id range: %v", shardIDs)
+
+	log.Println("stream", stream, "shardIds", shardIDs)
+
 	return nil
 }

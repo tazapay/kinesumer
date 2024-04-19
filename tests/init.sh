@@ -16,7 +16,7 @@ aws dynamodb create-table \
     ReadCapacityUnits=10,WriteCapacityUnits=10 \
     --local-secondary-indexes file://schema/ddb-lsi.json \
     --endpoint-url http://localhost:14566 \
-    --region ap-northeast-2 || true | cat
+    --region ap-southeast-1 || true | cat
 
 # Create kinesis stream.
 aws kinesis create-stream \
@@ -24,4 +24,4 @@ aws kinesis create-stream \
     --shard-count 5 \
     --endpoint-url http://localhost:14566 \
     --cli-connect-timeout 6000 \
-    --region ap-northeast-2 || true | cat
+    --region ap-southeast-1 || true | cat

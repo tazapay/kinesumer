@@ -15,10 +15,10 @@ const (
 
 // stateShardCache manages shard id list cache.
 type stateShardCache struct {
-	ShardCacheKey string   `dynamo:"pk,pk"`
-	Stream        string   `dynamo:"sk,sk"`
-	Shards        Shards   `dynamo:"shards"`
-	ShardIDs      []string `dynamo:"shard_ids"` // Deprecated.
+	ShardCacheKey string   `dynamodbav:"pk,pk"`
+	Stream        string   `dynamodbav:"sk,sk"`
+	Shards        Shards   `dynamodbav:"shards"`
+	ShardIDs      []string `dynamodbav:"shard_ids"` // Deprecated.
 }
 
 func buildShardCacheKey(app string) string {
@@ -27,9 +27,9 @@ func buildShardCacheKey(app string) string {
 
 // stateClient manages consumer client.
 type stateClient struct {
-	ClientKey  string    `dynamo:"pk,pk"`
-	ClientID   string    `dynamo:"sk,sk"`
-	LastUpdate time.Time `dynamo:"last_update,lsi1"`
+	ClientKey  string    `dynamodbav:"pk,pk"`
+	ClientID   string    `dynamodbav:"sk,sk"`
+	LastUpdate time.Time `dynamodbav:"last_update,lsi1"`
 }
 
 func buildClientKey(app string) string {
@@ -46,10 +46,10 @@ type ShardCheckPoint struct {
 
 // stateCheckPoint manages record check points.
 type stateCheckPoint struct {
-	StreamKey      string    `dynamo:"pk,pk"`
-	ShardID        string    `dynamo:"sk,sk"`
-	SequenceNumber string    `dynamo:"sequence_number"`
-	LastUpdate     time.Time `dynamo:"last_update"`
+	StreamKey      string    `dynamodbav:"pk,pk"`
+	ShardID        string    `dynamodbav:"sk,sk"`
+	SequenceNumber string    `dynamodbav:"sequence_number"`
+	LastUpdate     time.Time `dynamodbav:"last_update"`
 }
 
 func buildCheckPointKey(app, stream string) string {

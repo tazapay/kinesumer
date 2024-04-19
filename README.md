@@ -1,6 +1,6 @@
 # Kinesumer
 
-[![Run tests](https://github.com/daangn/kinesumer/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/daangn/kinesumer/actions/workflows/test.yml) [![Release](https://img.shields.io/github/v/tag/daangn/kinesumer?label=Release)](https://github.com/daangn/kinesumer/releases)
+[![Run tests](https://github.com/tazapay/kinesumer/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/tazapay/kinesumer/actions/workflows/test.yml) [![Release](https://img.shields.io/github/v/tag/daangn/kinesumer?label=Release)](https://github.com/tazapay/kinesumer/releases)
 
 Kinesumer is a Go client implementing a client-side distributed consumer group client for [Amazon Kinesis](https://aws.amazon.com/kinesis/). It supports following features:
 
@@ -34,15 +34,15 @@ import (
     "fmt"
     "time"
 
-    "github.com/daangn/kinesumer"
+    "github.com/tazapay/kinesumer"
 )
 
 func main() {
     client, err := kinesumer.NewKinesumer(
         &kinesumer.Config{
             App:            "myapp",
-            KinesisRegion:  "ap-northeast-2",
-            DynamoDBRegion: "ap-northeast-2",
+            KinesisRegion:  "ap-southeast-1",
+            DynamoDBRegion: "ap-southeast-1",
             DynamoDBTable:  "kinesumer-state-store",
             ScanLimit:      1500,
             ScanTimeout:    2 * time.Second,

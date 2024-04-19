@@ -6,4 +6,4 @@ services:
       - "14566:4566"
     environment:
       SERVICES: kinesis,dynamodb
-      DEFAULT_REGION: ap-northeast-2
+      DEFAULT_REGION: ap-southeast-1

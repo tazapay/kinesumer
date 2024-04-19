@@ -1,0 +1,41 @@
+{
+    "TableName": "kinesumer-state-store",
+    "AttributeDefinitions": [
+        {
+            "AttributeName": "pk",
+            "AttributeType": "S"
+        },
+        {
+            "AttributeName": "sk",
+            "AttributeType": "S"
+        }
+    ],
+    "KeySchema": [
+        {
+            "AttributeName": "pk",
+            "KeyType": "HASH"
+        },
+        {
+            "AttributeName": "sk",
+            "KeyType": "RANGE"
+        }
+    ],
+    "LocalSecondaryIndexes": [
+        {
+            "IndexName": "index-client-key-last-update",
+            "KeySchema": [
+                {
+                    "AttributeName": "pk",
+                    "KeyType": "HASH"
+                },
+                {
+                    "AttributeName": "sk",
+                    "KeyType": "RANGE"
+                }
+            ],
+            "Projection": {
+                "ProjectionType": "KEYS_ONLY"
+            }
+        }
+    ]
+}
