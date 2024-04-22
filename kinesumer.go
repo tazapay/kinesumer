@@ -218,7 +218,7 @@ func NewKinesumer(cfg *Config) (*Kinesumer, error) {
 	// Initialize the AWS session to build Kinesis client.
 	awsCfg := session.NewAWS()
 
-	awsCfg.Region = cfg.KinesisRegion
+	awsCfg.Region = cfg.Region
 
 	// sess, err := session.NewSession(awsCfg)
 	// if err != nil {
@@ -305,7 +305,7 @@ func (k *Kinesumer) init() error {
 
 func (k *Kinesumer) listShards(ctx context.Context, stream string) (Shards, error) {
 	output, err := k.client.ListShards(ctx, &kinesis.ListShardsInput{
-		StreamName: aws.String(stream),
+		StreamARN: aws.String(stream),
 	})
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -324,8 +324,8 @@ func (k *Kinesumer) listShards(ctx context.Context, stream string) (Shards, erro
 	nextToken := output.NextToken
 	for nextToken != nil {
 		output, err := k.client.ListShards(ctx, &kinesis.ListShardsInput{
-			StreamName: aws.String(stream),
-			NextToken:  nextToken,
+			StreamARN: aws.String(stream),
+			NextToken: nextToken,
 		})
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -409,7 +409,7 @@ func (k *Kinesumer) registerConsumers(ctx context.Context) error {
 	for _, stream := range k.streams {
 		dOutput, err := k.client.DescribeStream(ctx,
 			&kinesis.DescribeStreamInput{
-				StreamName: aws.String(stream),
+				StreamARN: aws.String(stream),
 			},
 		)
 		if err != nil {
@@ -715,8 +715,8 @@ func (k *Kinesumer) getNextShardIterator(
 	}
 
 	input := &kinesis.GetShardIteratorInput{
-		StreamName: aws.String(stream),
-		ShardId:    aws.String(shardID),
+		StreamARN: aws.String(stream),
+		ShardId:   aws.String(shardID),
 	}
 	if seq, ok := k.checkPoints[stream].Load(shardID); ok {
 		input.ShardIteratorType = types.ShardIteratorTypeAfterSequenceNumber

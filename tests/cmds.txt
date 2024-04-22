@@ -1,3 +1,5 @@
+docker-compose -f ./tests/docker-compose.yml up
+
 aws --endpoint-url=http://localhost:14566 dynamodb create-table \
     --table-name kinesumer-state-store \
 	--cli-input-json file://schema/ddb-lsi2.json \
