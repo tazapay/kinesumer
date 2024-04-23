@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/pkg/errors"
 	"github.com/tazapay/grpc-framework/client/session"
+	"github.com/tazapay/grpc-framework/env"
 )
 
 //go:generate mockgen -source=statestore.go -destination=statestore_mock.go -package=kinesumer StateStore
@@ -50,18 +51,20 @@ type (
 )
 
 // newStateStore initializes the state store.
-func newStateStore(cfg *Config) (StateStore, error) {
+func newStateStore(ctx context.Context, cfg *Config) (StateStore, error) {
 	awsCfg := session.NewAWS()
-	awsCfg.Region = cfg.DynamoDBRegion
 
 	// Ping-like request to check if client can reach to DynamoDB.
 	client := dynamodb.NewFromConfig(awsCfg, func(o *dynamodb.Options) {
-		o.BaseEndpoint = &cfg.DynamoDBEndpoint
+		if env.Get(env.Environment) == env.Local {
+			o.Region = env.LocalRegion
+			o.BaseEndpoint = aws.String(cfg.DynamoDBEndpoint)
+		}
 	})
 
 	table := cfg.DynamoDBTable
 	if _, err := client.DescribeTable(
-		context.TODO(), &dynamodb.DescribeTableInput{TableName: aws.String(table)},
+		ctx, &dynamodb.DescribeTableInput{TableName: aws.String(table)},
 	); err != nil {
 		return nil, errors.Wrap(err, "kinesumer: client can't access to dynamodb")
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tazapay/grpc-framework/client/session"
+	"github.com/tazapay/grpc-framework/env"
 	"github.com/tazapay/kinesumer/pkg/xrand"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -185,7 +186,7 @@ type Kinesumer struct {
 }
 
 // NewKinesumer initializes and returns a new Kinesumer client.
-func NewKinesumer(cfg *Config) (*Kinesumer, error) {
+func NewKinesumer(ctx context.Context, cfg *Config) (*Kinesumer, error) {
 	if cfg.App == "" {
 		return nil, errors.WithStack(
 			errors.New("you must pass the app name"),
@@ -206,7 +207,7 @@ func NewKinesumer(cfg *Config) (*Kinesumer, error) {
 	// Initialize the state store.
 	var stateStore StateStore
 	if cfg.StateStore == nil {
-		s, err := newStateStore(cfg)
+		s, err := newStateStore(ctx, cfg)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -240,7 +241,10 @@ func NewKinesumer(cfg *Config) (*Kinesumer, error) {
 		cfg.Commit = NewDefaultCommitConfig()
 	}
 	kc := kinesis.NewFromConfig(awsCfg, func(o *kinesis.Options) {
-		o.BaseEndpoint = aws.String(cfg.KinesisEndpoint)
+		if env.Get(env.Environment) == env.Local {
+			o.Region = env.LocalRegion
+			o.BaseEndpoint = aws.String(env.LocalKinesisEndpoint)
+		}
 	})
 	buffer := recordsChanBuffer
 	kinesumer := &Kinesumer{
