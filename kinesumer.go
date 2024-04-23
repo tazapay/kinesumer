@@ -29,8 +29,8 @@ const (
 
 	defaultScanLimit int32 = 2000
 
-	defaultScanTimeout  = 2 * time.Second
-	defaultScanInterval = 10 * time.Millisecond
+	defaultScanTimeout  = 5 * time.Second
+	defaultScanInterval = 1 * time.Second
 
 	recordsChanBuffer = 20
 )
@@ -366,6 +366,7 @@ func (k *Kinesumer) Consume(
 	}
 
 	if err := k.syncShardInfo(ctx); err != nil {
+		log.Println("failed to sync shard info", "error", err)
 		return nil, errors.WithStack(err)
 	}
 
@@ -727,7 +728,7 @@ func (k *Kinesumer) getNextShardIterator(
 		seqNo := seq.(string)
 		input.StartingSequenceNumber = &seqNo
 	} else {
-		input.ShardIteratorType = types.ShardIteratorTypeLatest
+		input.ShardIteratorType = types.ShardIteratorTypeTrimHorizon
 	}
 
 	output, err := k.client.GetShardIterator(ctx, input)
