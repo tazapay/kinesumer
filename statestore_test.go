@@ -51,7 +51,7 @@ func TestStateStore_UpdateCheckPointsWorksFine(t *testing.T) {
 		DynamoDBTable:    "kinesumer-state-store",
 		DynamoDBEndpoint: "http://localhost:14566",
 	}
-	store, err := newStateStore(cfg)
+	store, err := newStateStore(context.Background(), cfg)
 	assert.NoError(t, err, "there should be no error")
 
 	s, _ := store.(*stateStore)

@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/tazapay/grpc-framework/client/session"
 	"github.com/tazapay/grpc-framework/env"
+	"github.com/tazapay/kinesumer/pkg/utils"
 )
 
 //go:generate mockgen -source=statestore.go -destination=statestore_mock.go -package=kinesumer StateStore
@@ -106,7 +107,7 @@ func (s *stateStore) GetShards(
 	o, err := s.db.client.GetItem(ctx, &dynamodb.GetItemInput{
 		Key: map[string]types.AttributeValue{
 			"pk": &types.AttributeValueMemberS{Value: key},
-			"sk": &types.AttributeValueMemberS{Value: stream},
+			"sk": &types.AttributeValueMemberS{Value: utils.NameFromStreamARN(stream)},
 		},
 		TableName:      aws.String(s.db.table),
 		ConsistentRead: aws.Bool(true),
@@ -141,7 +142,7 @@ func (s *stateStore) UpdateShards(
 		TableName: aws.String(s.db.table),
 		Key: map[string]types.AttributeValue{
 			"pk": &types.AttributeValueMemberS{Value: key},
-			"sk": &types.AttributeValueMemberS{Value: stream},
+			"sk": &types.AttributeValueMemberS{Value: utils.NameFromStreamARN(stream)},
 		},
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
@@ -407,7 +408,7 @@ func (s *stateStore) ListCheckPoints(
 	statementRequests := make([]types.BatchStatementRequest, len(shardIDs))
 
 	for index, id := range shardIDs {
-		params, err := attributevalue.MarshalList([]interface{}{buildCheckPointKey(s.app, stream), id})
+		params, err := attributevalue.MarshalList([]interface{}{buildCheckPointKey(s.app, utils.NameFromStreamARN(stream)), id})
 		if err != nil {
 			log.Println("failed to marshal checkpoint params", err)
 			return nil, errors.WithStack(err)
@@ -468,7 +469,7 @@ func (s *stateStore) UpdateCheckPoints(ctx context.Context, checkpoints []*Shard
 		for _, checkpoint := range checkpoints[start:end] {
 			var item map[string]types.AttributeValue
 			scp := stateCheckPoint{
-				StreamKey:      buildCheckPointKey(s.app, checkpoint.Stream),
+				StreamKey:      buildCheckPointKey(s.app, utils.NameFromStreamARN(checkpoint.Stream)),
 				ShardID:        checkpoint.ShardID,
 				SequenceNumber: checkpoint.SequenceNumber,
 				LastUpdate:     checkpoint.UpdatedAt,

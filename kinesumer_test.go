@@ -55,15 +55,15 @@ func newTestEnv(t *testing.T) *testEnv {
 		ScanTimeout:      3 * time.Second,
 	}
 
-	client1, err := NewKinesumer(config)
+	client1, err := NewKinesumer(context.Background(), config)
 	if err != nil {
 		t.Fatal("failed to init test env:", err.Error())
 	}
-	client2, err := NewKinesumer(config)
+	client2, err := NewKinesumer(context.Background(), config)
 	if err != nil {
 		t.Fatal("failed to init test env:", err.Error())
 	}
-	client3, err := NewKinesumer(config)
+	client3, err := NewKinesumer(context.Background(), config)
 	if err != nil {
 		t.Fatal("failed to init test env:", err.Error())
 	}

@@ -10,6 +10,7 @@ import (
 
 func main() {
 	client, err := kinesumer.NewKinesumer(
+		context.Background(),
 		&kinesumer.Config{
 			App:              "myapp",
 			KinesisRegion:    "ap-southeast-1",
