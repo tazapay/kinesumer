@@ -14,7 +14,7 @@ const (
 
 func (k *Kinesumer) doLeadershipSyncShardIDs(ctx context.Context) error {
 	for _, stream := range k.streams {
-		shards, err := k.listShards(ctx, stream)
+		shards, err := k.listShards(stream)
 		if err != nil {
 			return errors.WithStack(err)
 		}

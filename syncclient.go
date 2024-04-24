@@ -98,7 +98,7 @@ func (k *Kinesumer) syncShardInfoForStream(
 	shards, err := k.stateStore.GetShards(ctx, stream)
 	if errors.Is(err, ErrNoShardCache) {
 		// If there are no cache, fetch shards from Kinesis directly.
-		shards, err = k.listShards(ctx, stream)
+		shards, err = k.listShards(stream)
 		if err != nil {
 			log.Println("failed to list shards from stream", "error", err)
 			return errors.WithStack(err)

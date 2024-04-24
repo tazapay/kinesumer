@@ -307,7 +307,9 @@ func (k *Kinesumer) init() error {
 	return nil
 }
 
-func (k *Kinesumer) listShards(ctx context.Context, stream string) (Shards, error) {
+func (k *Kinesumer) listShards(stream string) (Shards, error) {
+	ctx := context.Background()
+
 	output, err := k.client.ListShards(ctx, &kinesis.ListShardsInput{
 		StreamARN: aws.String(stream),
 	})
