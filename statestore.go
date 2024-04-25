@@ -3,7 +3,6 @@ package kinesumer
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -14,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/tazapay/grpc-framework/client/session"
 	"github.com/tazapay/grpc-framework/env"
+	"github.com/tazapay/grpc-framework/logger"
 	"github.com/tazapay/kinesumer/pkg/utils"
 )
 
@@ -80,6 +80,7 @@ func newStateStore(ctx context.Context, cfg *Config) (StateStore, error) {
 
 // TableExists determines whether a DynamoDB table exists.
 func (s *stateStore) TableExists(ctx context.Context) (bool, error) {
+	log := logger.FromContext(ctx)
 	exists := true
 	_, err := s.db.client.DescribeTable(
 		context.TODO(), &dynamodb.DescribeTableInput{TableName: aws.String(s.db.table)},
@@ -87,9 +88,9 @@ func (s *stateStore) TableExists(ctx context.Context) (bool, error) {
 	if err != nil {
 		var notFoundEx *types.ResourceNotFoundException
 		if errors.As(err, &notFoundEx) {
-			log.Printf("Table %v does not exist.\n", s.db.table)
+			log.Error("Table does not exist.", err, "table_name", s.db.table)
 		} else {
-			log.Println("Couldn't determine existence of table . Here's why: ", err, "table_name", s.db.table)
+			log.Error("Couldn't determine existence of table.", err, "table_name", s.db.table)
 		}
 		exists = false
 	}
@@ -103,6 +104,7 @@ func (s *stateStore) GetShards(
 	var (
 		key   = buildShardCacheKey(s.app)
 		cache *stateShardCache
+		log   = logger.FromContext(ctx)
 	)
 	o, err := s.db.client.GetItem(ctx, &dynamodb.GetItemInput{
 		Key: map[string]types.AttributeValue{
@@ -113,13 +115,13 @@ func (s *stateStore) GetShards(
 		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
-		log.Println("failed to get shards", err)
+		log.Error("failed to get shards", err)
 		return nil, errors.WithStack(err)
 	}
 
 	err = attributevalue.UnmarshalMap(o.Item, &cache)
 	if err != nil {
-		log.Println("failed to unmarshal shards", err)
+		log.Error("failed to unmarshal shards", err)
 		return nil, errors.WithStack(err)
 	}
 
@@ -131,10 +133,12 @@ func (s *stateStore) UpdateShards(
 	ctx context.Context, stream string, shards Shards,
 ) error {
 	key := buildShardCacheKey(s.app)
+	log := logger.FromContext(ctx)
 	update := expression.Set(expression.Name("shards"), expression.Value(shards))
+
 	expr, err := expression.NewBuilder().WithUpdate(update).Build()
 	if err != nil {
-		log.Println("failed to build expression for UpdateShards", err)
+		log.Error("failed to build expression for UpdateShards", err)
 		return errors.WithStack(err)
 	}
 
@@ -150,7 +154,7 @@ func (s *stateStore) UpdateShards(
 		ReturnValues:              types.ReturnValueUpdatedNew,
 	})
 	if err != nil {
-		log.Println("failed to update shards", err)
+		log.Error("failed to update shards", err)
 		return errors.WithStack(err)
 	}
 
@@ -164,6 +168,7 @@ func (s *stateStore) ListAllAliveClientIDs(ctx context.Context) ([]string, error
 		now      = time.Now().UTC()
 		clients  []*stateClient
 		response *dynamodb.QueryOutput
+		log      = logger.FromContext(ctx)
 	)
 
 	keyEx := expression.Key("pk").Equal(expression.Value(key))
@@ -173,7 +178,7 @@ func (s *stateStore) ListAllAliveClientIDs(ctx context.Context) ([]string, error
 		WithKeyCondition(keyEx).
 		Build()
 	if err != nil {
-		log.Printf("Couldn't build expression for ListAllAliveClientIDs query. Here's why: %v\n", err)
+		log.Error("Couldn't build expression for ListAllAliveClientIDs query.", err)
 		return nil, errors.WithStack(err)
 	}
 
@@ -187,13 +192,14 @@ func (s *stateStore) ListAllAliveClientIDs(ctx context.Context) ([]string, error
 	for queryPaginator.HasMorePages() {
 		response, err = queryPaginator.NextPage(context.TODO())
 		if err != nil {
-			log.Printf("Couldn't query for movies released in %v. Here's why: %v\n", key, err)
+			log.Error("Couldn't query for alive clients", err, "key", key)
 			return nil, errors.WithStack(err)
 		}
+
 		var clientPage []*stateClient
 		err = attributevalue.UnmarshalListOfMaps(response.Items, &clientPage)
 		if err != nil {
-			log.Printf("Couldn't unmarshal query response. Here's why: %v\n", err)
+			log.Error("Couldn't unmarshal query response.", err)
 			return nil, errors.WithStack(err)
 		}
 		clients = append(clients, clientPage...)
@@ -220,6 +226,7 @@ func (s *stateStore) RegisterClient(
 	var (
 		key = buildClientKey(s.app)
 		now = time.Now().UTC()
+		log = logger.FromContext(ctx)
 	)
 	client := stateClient{
 		ClientKey:  key,
@@ -228,7 +235,7 @@ func (s *stateStore) RegisterClient(
 	}
 	item, err := attributevalue.MarshalMap(client)
 	if err != nil {
-		log.Println("failed to marshal client data", err)
+		log.Error("failed to marshal client data", err)
 		return errors.WithStack(err)
 	}
 
@@ -236,7 +243,7 @@ func (s *stateStore) RegisterClient(
 		Item:      item,
 		TableName: aws.String(s.db.table),
 	}); err != nil {
-		log.Println("failed to register client", err)
+		log.Error("failed to register client", err)
 		return errors.WithStack(err)
 	}
 	// if err := s.db.table.Put(client).RunWithContext(ctx)
@@ -247,7 +254,9 @@ func (s *stateStore) RegisterClient(
 func (s *stateStore) DeregisterClient(
 	ctx context.Context, clientID string,
 ) error {
+	log := logger.FromContext(ctx)
 	key := buildClientKey(s.app)
+
 	_, err := s.db.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.db.table),
 		Key: map[string]types.AttributeValue{
@@ -256,7 +265,7 @@ func (s *stateStore) DeregisterClient(
 		},
 	})
 	if err != nil {
-		log.Printf("Couldn't delete %v from the table. Here's why: %v\n", key, err)
+		log.Error("Couldn't delete from the table", err, "key", key)
 		return errors.WithStack(err)
 	}
 	return nil
@@ -276,11 +285,12 @@ func (s *stateStore) PingClientAliveness(
 		key = buildClientKey(s.app)
 		now = time.Now().UTC()
 		err error
+		log = logger.FromContext(ctx)
 	)
 	update := expression.Set(expression.Name("last_update"), expression.Value(now))
 	expr, err := expression.NewBuilder().WithUpdate(update).Build()
 	if err != nil {
-		log.Println("failed to build ping expression", err)
+		log.Error("failed to build ping expression", err)
 		return errors.WithStack(err)
 	}
 
@@ -300,7 +310,7 @@ func (s *stateStore) PingClientAliveness(
 	// 	Set("last_update", now).
 	// 	RunWithContext(ctx)
 	if err != nil {
-		log.Println("failed to update client aliveness", err)
+		log.Error("failed to update client aliveness", err)
 		return errors.WithStack(err)
 	}
 	return nil
@@ -311,6 +321,7 @@ func (s *stateStore) PruneClients(ctx context.Context) error {
 	var (
 		key = buildClientKey(s.app)
 		now = time.Now().UTC()
+		log = logger.FromContext(ctx)
 	)
 	var outdated []*stateClient
 
@@ -323,7 +334,7 @@ func (s *stateStore) PruneClients(ctx context.Context) error {
 		// WithCondition(conditionEx).
 		Build()
 	if err != nil {
-		log.Println("failed to build prune clients expression", err)
+		log.Error("failed to build prune clients expression", err)
 		return errors.WithStack(err)
 	}
 
@@ -336,13 +347,13 @@ func (s *stateStore) PruneClients(ctx context.Context) error {
 		ExpressionAttributeValues: expr.Values(),
 	})
 	if err != nil {
-		log.Println("failed to query outdated client's data", err, expr)
+		log.Error("failed to query outdated client's data", err, expr)
 		return errors.WithStack(err)
 	}
 
 	err = attributevalue.UnmarshalListOfMaps(o.Items, &outdated)
 	if err != nil {
-		log.Println("failed to unmarshal outdated clients", err)
+		log.Error("failed to unmarshal outdated clients", err)
 		return errors.WithStack(err)
 	}
 
@@ -360,7 +371,7 @@ func (s *stateStore) PruneClients(ctx context.Context) error {
 	for index, client := range outdated {
 		params, err := attributevalue.MarshalList([]interface{}{client.ClientKey, client.ClientID})
 		if err != nil {
-			log.Println("failed to marshal client params", err)
+			log.Error("failed to marshal client params", err)
 			return errors.WithStack(err)
 		}
 
@@ -375,7 +386,7 @@ func (s *stateStore) PruneClients(ctx context.Context) error {
 		Statements: statementRequests,
 	})
 	if err != nil {
-		log.Println("failed to delete clients", err)
+		log.Error("failed to delete clients", err)
 		return errors.WithStack(err)
 	}
 
@@ -405,12 +416,14 @@ func (s *stateStore) ListCheckPoints(
 		return nil, ErrEmptyShardIDs
 	}
 
+	log := logger.FromContext(ctx)
+
 	statementRequests := make([]types.BatchStatementRequest, len(shardIDs))
 
 	for index, id := range shardIDs {
 		params, err := attributevalue.MarshalList([]interface{}{buildCheckPointKey(s.app, utils.NameFromStreamARN(stream)), id})
 		if err != nil {
-			log.Println("failed to marshal checkpoint params", err)
+			log.Error("failed to marshal checkpoint params", err)
 			return nil, errors.WithStack(err)
 		}
 
@@ -425,7 +438,7 @@ func (s *stateStore) ListCheckPoints(
 		Statements: statementRequests,
 	})
 	if err != nil {
-		log.Println("failed to get checkpoints", err)
+		log.Error("failed to get checkpoints", err)
 		return nil, errors.WithStack(err)
 	}
 
@@ -435,7 +448,7 @@ func (s *stateStore) ListCheckPoints(
 		var checkPoint stateCheckPoint
 		err = attributevalue.UnmarshalMap(response.Item, &checkPoint)
 		if err != nil {
-			log.Printf("Couldn't unmarshal response. Here's why: %v\n", err)
+			log.Error("Couldn't unmarshal response", err)
 			return nil, errors.WithStack(err)
 		}
 		seqMap[checkPoint.ShardID] = checkPoint.SequenceNumber
@@ -461,6 +474,8 @@ func (s *stateStore) UpdateCheckPoints(ctx context.Context, checkpoints []*Shard
 	batchSize := 25 // DynamoDB allows a maximum batch size of 25 items.
 	start := 0
 	end := start + batchSize
+	log := logger.FromContext(ctx)
+
 	for start < len(checkpoints) {
 		writeReqs := make([]types.WriteRequest, 0)
 		if end > len(checkpoints) {
@@ -477,11 +492,11 @@ func (s *stateStore) UpdateCheckPoints(ctx context.Context, checkpoints []*Shard
 
 			item, err = attributevalue.MarshalMap(scp)
 			if err != nil {
-				log.Printf("Couldn't marshal checkpoint %v for batch writing. Here's why: %v\n", checkpoint, err)
+				log.Error("Couldn't marshal checkpoint for batch writing", err, "checkpoint", checkpoint)
 				return errors.WithStack(err)
 			}
 
-			log.Println("item", item)
+			log.Debug("checkpoint data", "item", item)
 
 			writeReqs = append(
 				writeReqs,
@@ -493,7 +508,7 @@ func (s *stateStore) UpdateCheckPoints(ctx context.Context, checkpoints []*Shard
 			RequestItems: map[string][]types.WriteRequest{s.db.table: writeReqs},
 		})
 		if err != nil {
-			log.Printf("Couldn't add a batch of checkpoints to %v. Here's why: %v\n", s.db.table, err)
+			log.Error("Couldn't add a batch of checkpoints to table Here's why", err, "table_name", s.db.table)
 			return errors.WithStack(err)
 		}
 

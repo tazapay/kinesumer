@@ -2,13 +2,13 @@ package kinesumer
 
 import (
 	"context"
-	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/tazapay/grpc-framework/client/session"
 	"github.com/tazapay/grpc-framework/env"
+	"github.com/tazapay/grpc-framework/logger"
 	"github.com/tazapay/kinesumer/pkg/xrand"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -355,6 +355,7 @@ func (k *Kinesumer) Consume(
 	ctx context.Context,
 	streams []string,
 ) (<-chan *Record, error) {
+	log := logger.FromContext(ctx)
 	k.streams = streams
 
 	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
@@ -368,7 +369,7 @@ func (k *Kinesumer) Consume(
 	}
 
 	if err := k.syncShardInfo(ctx); err != nil {
-		log.Println("failed to sync shard info", "error", err)
+		log.Error("failed to sync shard info", err)
 		return nil, errors.WithStack(err)
 	}
 
@@ -478,6 +479,7 @@ func (k *Kinesumer) registerConsumers(ctx context.Context) error {
 }
 
 func (k *Kinesumer) deregisterConsumers(ctx context.Context) {
+	log := logger.FromContext(ctx)
 	for _, meta := range k.efoMeta {
 		_, err := k.client.DeregisterStreamConsumer(ctx,
 			&kinesis.DeregisterStreamConsumerInput{
@@ -487,7 +489,7 @@ func (k *Kinesumer) deregisterConsumers(ctx context.Context) {
 			},
 		)
 		if err != nil {
-			log.Print("kinesumer: failed to deregister")
+			log.Error("kinesumer: failed to deregister", err)
 		}
 	}
 }
@@ -758,6 +760,7 @@ func (k *Kinesumer) commitPeriodically() {
 
 // MarkRecord marks the provided record as consumed.
 func (k *Kinesumer) MarkRecord(record *Record) {
+	log := logger.FromContext(context.Background())
 	if record == nil {
 		k.sendOrDiscardError(errMarkNilRecord)
 		return
@@ -774,9 +777,9 @@ func (k *Kinesumer) MarkRecord(record *Record) {
 		return
 	}
 	k.offsets[record.Stream].Store(record.ShardID, seqNum)
-	log.Println("stream", record.Stream, "offsets")
+	log.Debug("stream", record.Stream, "offsets")
 	k.offsets[record.Stream].Range(func(key, value any) bool {
-		log.Println("key", key, "value", value)
+		log.Debug("key", key, "value", value)
 		return true
 	})
 }
@@ -863,7 +866,8 @@ func (k *Kinesumer) sendOrDiscardError(err error) {
 
 // Close stops the consuming and sync jobs.
 func (k *Kinesumer) Close() {
-	log.Println("kinesumer: closing the kinesumer")
+	log := logger.FromContext(context.Background())
+	log.Info("kinesumer: closing the kinesumer")
 	close(k.close)
 
 	k.wait.Wait()
@@ -881,5 +885,5 @@ func (k *Kinesumer) Close() {
 
 	// Wait last sync jobs.
 	time.Sleep(syncTimeout)
-	log.Println("kinesumer: shutdown successfully")
+	log.Info("kinesumer: shutdown successfully")
 }

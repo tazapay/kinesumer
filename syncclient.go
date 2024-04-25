@@ -2,16 +2,17 @@ package kinesumer
 
 import (
 	"context"
-	"log"
 	"math"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/tazapay/grpc-framework/logger"
 )
 
 func (k *Kinesumer) loopSyncClient() {
+	log := logger.FromContext(context.Background())
 	<-k.started
 
 	ticker := time.NewTicker(syncInterval)
@@ -22,18 +23,18 @@ func (k *Kinesumer) loopSyncClient() {
 			ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 
 			if err := k.pingAliveness(ctx); err != nil {
-				log.Println("kinesumer: failed to pingAliveness", "error", err)
+				log.Error("kinesumer: failed to pingAliveness", err)
 			}
 			if err := k.syncShardInfo(ctx); err != nil {
-				log.Println("kinesumer: failed to syncShardInfo", "error", err)
+				log.Error("kinesumer: failed to syncShardInfo", err)
 			}
 
 			if k.leader {
 				if err := k.doLeadershipSyncShardIDs(ctx); err != nil {
-					log.Println("kinesumer: failed to doLeadershipSyncShardIDs", "error", err)
+					log.Error("kinesumer: failed to doLeadershipSyncShardIDs", err)
 				}
 				if err := k.doLeadershipPruneClients(ctx); err != nil {
-					log.Println("kinesumer: failed to doLeadershipPruneClients", "error", err)
+					log.Error("kinesumer: failed to doLeadershipPruneClients", err)
 				}
 			}
 			cancel()
@@ -42,7 +43,7 @@ func (k *Kinesumer) loopSyncClient() {
 			ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 
 			if err := k.stateStore.DeregisterClient(ctx, k.id); err != nil {
-				log.Println("kinesumer: failed to DeregisterClient", "error", err)
+				log.Error("kinesumer: failed to DeregisterClient", err)
 			}
 			cancel()
 			return
@@ -58,13 +59,15 @@ func (k *Kinesumer) pingAliveness(ctx context.Context) error {
 }
 
 func (k *Kinesumer) syncShardInfo(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+
 	clientIDs, err := k.stateStore.ListAllAliveClientIDs(ctx)
 	if err != nil {
-		log.Println("failed to list alive clients", "error", err)
+		log.Error("failed to list alive clients", err)
 		return errors.WithStack(err)
 	}
 
-	log.Println("clientIDs", clientIDs)
+	log.Info("clientIDs", clientIDs)
 
 	// Skip if there are no alive clients.
 	numOfClient := len(clientIDs)
@@ -85,7 +88,7 @@ func (k *Kinesumer) syncShardInfo(ctx context.Context) error {
 	// Update shard information.
 	for _, stream := range k.streams {
 		if err := k.syncShardInfoForStream(ctx, stream, idx, numOfClient); err != nil {
-			log.Println("failed to sync shard info for stream", "error", err)
+			log.Error("failed to sync shard info for stream", err)
 			return errors.WithStack(err)
 		}
 	}
@@ -95,16 +98,18 @@ func (k *Kinesumer) syncShardInfo(ctx context.Context) error {
 func (k *Kinesumer) syncShardInfoForStream(
 	ctx context.Context, stream string, idx, numOfClient int,
 ) error {
+	log := logger.FromContext(ctx)
+
 	shards, err := k.stateStore.GetShards(ctx, stream)
 	if errors.Is(err, ErrNoShardCache) {
 		// If there are no cache, fetch shards from Kinesis directly.
 		shards, err = k.listShards(stream)
 		if err != nil {
-			log.Println("failed to list shards from stream", "error", err)
+			log.Error("failed to list shards from stream", err)
 			return errors.WithStack(err)
 		}
 	} else if err != nil {
-		log.Println("failed to get shards from cache", "error", err)
+		log.Error("failed to get shards from cache", err)
 		return errors.WithStack(err)
 	}
 
@@ -146,7 +151,7 @@ func (k *Kinesumer) syncShardInfoForStream(
 	// Sync shard check points.
 	seqMap, err := k.stateStore.ListCheckPoints(ctx, stream, shardIDs)
 	if err != nil {
-		log.Println("failed to list check points", "error", err)
+		log.Error("failed to list check points", err)
 		return errors.WithStack(err)
 	}
 
@@ -168,7 +173,7 @@ func (k *Kinesumer) syncShardInfoForStream(
 		k.checkPoints[stream].Store(id, seq)
 	}
 
-	log.Println("stream", stream, "shardIds", shardIDs)
+	log.Debug("shard info for stream data", "stream", stream, "shardIds", shardIDs)
 
 	return nil
 }
