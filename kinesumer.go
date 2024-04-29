@@ -187,6 +187,8 @@ type Kinesumer struct {
 
 // NewKinesumer initializes and returns a new Kinesumer client.
 func NewKinesumer(ctx context.Context, cfg *Config) (*Kinesumer, error) {
+	log := logger.FromContext(ctx)
+
 	if cfg.App == "" {
 		return nil, errors.WithStack(
 			errors.New("you must pass the app name"),
@@ -203,6 +205,7 @@ func NewKinesumer(ctx context.Context, cfg *Config) (*Kinesumer, error) {
 	if cfg.ClientID != "" {
 		id = cfg.ClientID
 	}
+	log.Info("kinesis config", cfg)
 
 	// Initialize the state store.
 	var stateStore StateStore

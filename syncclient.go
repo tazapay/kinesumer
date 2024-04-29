@@ -67,7 +67,7 @@ func (k *Kinesumer) syncShardInfo(ctx context.Context) error {
 		return errors.WithStack(err)
 	}
 
-	log.Info("clientIDs", clientIDs)
+	log.Info("syncing shard info", "clientIDs", clientIDs)
 
 	// Skip if there are no alive clients.
 	numOfClient := len(clientIDs)
