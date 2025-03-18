@@ -34,7 +34,7 @@ type testEnv struct {
 func newTestEnv(t *testing.T) *testEnv {
 	awsCfg, _ := config.LoadDefaultConfig(context.TODO())
 	awsCfg.Region = "ap-southeast-1"
-	awsCfg.BaseEndpoint = aws.String("http://localhost:14566")
+	awsCfg.BaseEndpoint = aws.String("http://localhost:4566")
 	// sess, err := session.NewSession(awsCfg)
 	// if err != nil {
 	// 	t.Fatal("failed to init test env:", err.Error())
@@ -47,10 +47,10 @@ func newTestEnv(t *testing.T) *testEnv {
 	config := &Config{
 		App:              "test_client",
 		KinesisRegion:    "ap-southeast-1",
-		KinesisEndpoint:  "http://localhost:14566",
+		KinesisEndpoint:  "http://localhost:4566",
 		DynamoDBRegion:   "ap-southeast-1",
 		DynamoDBTable:    "kinesumer-state-store",
-		DynamoDBEndpoint: "http://localhost:14566",
+		DynamoDBEndpoint: "http://localhost:4566",
 		ScanLimit:        10,
 		ScanTimeout:      3 * time.Second,
 	}
