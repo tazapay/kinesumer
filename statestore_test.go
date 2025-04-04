@@ -18,7 +18,7 @@ import (
 func newTestDynamoDB(t *testing.T) *dynamo.DB {
 	awsCfg := aws.NewConfig()
 	awsCfg.WithRegion("ap-southeast-1")
-	awsCfg.WithEndpoint("http://localhost:14566")
+	awsCfg.WithEndpoint("http://localhost:4566")
 	sess, err := session.NewSession(awsCfg)
 	if err != nil {
 		t.Fatal("failed to init test env:", err.Error())
@@ -49,7 +49,7 @@ func TestStateStore_UpdateCheckPointsWorksFine(t *testing.T) {
 		App:              "test",
 		DynamoDBRegion:   "ap-southeast-1",
 		DynamoDBTable:    "kinesumer-state-store",
-		DynamoDBEndpoint: "http://localhost:14566",
+		DynamoDBEndpoint: "http://localhost:4566",
 	}
 	store, err := newStateStore(context.Background(), cfg)
 	assert.NoError(t, err, "there should be no error")

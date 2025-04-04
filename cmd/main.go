@@ -18,8 +18,8 @@ func main() {
 			DynamoDBTable:    "kinesumer-state-store",
 			ScanLimit:        1500,
 			ScanTimeout:      2 * time.Second,
-			KinesisEndpoint:  "http://localhost:14566",
-			DynamoDBEndpoint: "http://localhost:14566",
+			KinesisEndpoint:  "http://localhost:4566",
+			DynamoDBEndpoint: "http://localhost:4566",
 		},
 	)
 	if err != nil {

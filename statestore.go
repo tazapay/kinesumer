@@ -59,7 +59,7 @@ func newStateStore(ctx context.Context, cfg *Config) (StateStore, error) {
 	client := dynamodb.NewFromConfig(awsCfg, func(o *dynamodb.Options) {
 		if env.Get(env.Environment) == env.Local {
 			o.Region = env.LocalRegion
-			o.BaseEndpoint = aws.String(cfg.DynamoDBEndpoint)
+			o.BaseEndpoint = aws.String(env.LocalDynamoDBEndpoint)
 		}
 	})
 
