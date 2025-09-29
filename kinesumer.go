@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/cast"
 	"github.com/tazapay/grpc-framework/client/session"
 	"github.com/tazapay/grpc-framework/env"
 	"github.com/tazapay/grpc-framework/logger"
@@ -33,6 +34,9 @@ const (
 	defaultScanInterval = 1 * time.Second
 
 	recordsChanBuffer = 20
+
+	// flag to identify DR switches, can be modified in the github
+	ctxIsRegionSwitch = "IS_REGION_SWITCH"
 )
 
 // Error codes.
@@ -722,6 +726,8 @@ func (k *Kinesumer) consumeOnce(stream string, shard *Shard) ([]types.Record, bo
 func (k *Kinesumer) getNextShardIterator(
 	ctx context.Context, stream, shardID string,
 ) (*string, error) {
+	log := logger.FromContext(ctx)
+
 	if iter, ok := k.nextIters[stream].Load(shardID); ok {
 		return iter.(*string), nil
 	}
@@ -734,7 +740,12 @@ func (k *Kinesumer) getNextShardIterator(
 		input.ShardIteratorType = types.ShardIteratorTypeAfterSequenceNumber
 		seqNo := seq.(string)
 		input.StartingSequenceNumber = &seqNo
-	} else {
+		log.Debug("checkpoint found, creating new iterator", "checkpoint", seq.(string))
+	} else if (env.Get(env.Environment) != env.Prod && env.Get(env.Environment) != env.Sandbox) ||
+		cast.ToBool(env.Get(ctxIsRegionSwitch)) {
+		log.Debug("checkpoint not found or DR switch occurred, using trim horizon config")
+		// If env is not prod or sandbox, use TRIM_HORIZON when sequence number is not found.
+		// or if it's region switch context, use TRIM_HORIZON to reprocess all records.
 		input.ShardIteratorType = types.ShardIteratorTypeTrimHorizon
 	}
 
