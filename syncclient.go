@@ -155,6 +155,15 @@ func (k *Kinesumer) syncShardInfoForStream(
 		return errors.WithStack(err)
 	}
 
+	// ADD THIS LOG:
+	if len(seqMap) == 0 {
+		log.Debug("no checkpoints found for the stream in kinesis state store",
+			"stream", stream, "shardIDs", shardIDs)
+	} else {
+		log.Debug("found checkpoints for the stream", "stream",
+			stream, "count", len(seqMap), "checkpoints", seqMap)
+	}
+
 	if _, ok := k.checkPoints[stream]; !ok {
 		k.checkPoints[stream] = &sync.Map{}
 	}
