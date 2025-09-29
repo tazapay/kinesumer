@@ -741,8 +741,8 @@ func (k *Kinesumer) getNextShardIterator(
 		seqNo := seq.(string)
 		input.StartingSequenceNumber = &seqNo
 		log.Debug("checkpoint found, creating new iterator", "checkpoint", seq.(string))
-	} else if (env.Get(env.Environment) != env.Prod && env.Get(env.Environment) != env.Sandbox) ||
-		cast.ToBool(env.Get(ctxIsRegionSwitch)) {
+	} else if (env.Get(env.Environment) != env.Prod && env.Get(env.Environment) != env.Sandbox &&
+		env.Get(env.Environment) != env.Amber) || cast.ToBool(env.Get(ctxIsRegionSwitch)) {
 		log.Debug("checkpoint not found or DR switch occurred, using trim horizon config")
 		// If env is not prod or sandbox, use TRIM_HORIZON when sequence number is not found.
 		// or if it's region switch context, use TRIM_HORIZON to reprocess all records.
