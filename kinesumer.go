@@ -366,6 +366,10 @@ func (k *Kinesumer) Consume(ctx context.Context, streams []string,
 	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
 
+	log.Debug("Logging the env variables",
+		"conv_is_region_switch", cast.ToBool(env.Get(ctxIsRegionSwitch)),
+		"raw_is_region_switch", env.Get(ctxIsRegionSwitch))
+
 	// In EFO mode, client should register itself to Kinesis stream.
 	if k.efoMode {
 		if err := k.registerConsumers(ctx); err != nil {

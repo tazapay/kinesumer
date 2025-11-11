@@ -178,7 +178,7 @@ func (k *Kinesumer) syncShardInfoForStream(
 				_, ok := seqMap[""]
 				return ok
 			}()) {
-				log.Info("Checkpoint found to be empty, retrying...")
+				log.Info("Checkpoint found to be empty, retrying...", "checkpoint", seqMap)
 				return retry.RetryableError(ErrEmptySequenceNumber)
 			}
 
@@ -191,7 +191,7 @@ func (k *Kinesumer) syncShardInfoForStream(
 	}()) {
 		log.Debug("no checkpoints or empty checkpoints present in the map,"+
 			" might use TRIM_HORIZON or AT_TIMESTAMP config",
-			"stream", stream, "shardIDs", shardIDs)
+			"stream", stream, "shardIDs", shardIDs, "checkpoint", seqMap)
 	} else {
 		log.Debug("found checkpoints for the stream", "stream",
 			stream, "count", len(seqMap), "checkpoints", seqMap)
