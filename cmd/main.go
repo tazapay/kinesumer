@@ -30,7 +30,7 @@ func main() {
 	go func() {
 		for err := range client.Errors() {
 			// Error handling.
-			fmt.Println("!!!", err)
+			fmt.Println("!!!", "err", err)
 		}
 	}()
 

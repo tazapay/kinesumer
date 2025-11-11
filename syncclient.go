@@ -8,7 +8,16 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sethvargo/go-retry"
 	"github.com/tazapay/grpc-framework/logger"
+)
+
+// backoff config (extended values, since connection creation has part of service uptime)
+const (
+	baseDelay     = 100 * time.Millisecond
+	maxDuration   = 1 * time.Minute
+	maxRetries    = 3
+	jitterPercent = 30 // between 25 and 50
 )
 
 func (k *Kinesumer) loopSyncClient() {
@@ -148,16 +157,40 @@ func (k *Kinesumer) syncShardInfoForStream(
 		return true
 	})
 
-	// Sync shard check points.
-	seqMap, err := k.stateStore.ListCheckPoints(ctx, stream, shardIDs)
-	if err != nil {
-		log.Error("failed to list check points", err)
-		return errors.WithStack(err)
-	}
+	var seqMap map[string]string
 
-	// ADD THIS LOG:
-	if len(seqMap) == 0 {
-		log.Debug("no checkpoints found for the stream in kinesis state store",
+	retry.Do(ctx, func() retry.Backoff {
+		r := retry.NewFibonacci(baseDelay)            // start with a small delay to avoid overloading the server
+		r = retry.WithJitterPercent(jitterPercent, r) // jitter to the backoff delays to avoid "thundering herd"
+		r = retry.WithMaxRetries(maxRetries, r)       // terminate a retry after Nth attempt
+
+		return r
+	}(),
+		func(ctx context.Context) error {
+			// Sync shard check points.
+			seqMap, err = k.stateStore.ListCheckPoints(ctx, stream, shardIDs)
+			if err != nil {
+				log.Error("failed to list check points", err)
+				return errors.WithStack(err)
+			}
+
+			if len(seqMap) == 0 || (len(seqMap) == 1 && func() bool {
+				_, ok := seqMap[""]
+				return ok
+			}()) {
+				log.Info("Checkpoint found to be empty, retrying...")
+				return retry.RetryableError(ErrEmptySequenceNumber)
+			}
+
+			return nil
+		})
+
+	if len(seqMap) == 0 || (len(seqMap) == 1 && func() bool {
+		_, ok := seqMap[""]
+		return ok
+	}()) {
+		log.Debug("no checkpoints or empty checkpoints present in the map,"+
+			" might use TRIM_HORIZON or AT_TIMESTAMP config",
 			"stream", stream, "shardIDs", shardIDs)
 	} else {
 		log.Debug("found checkpoints for the stream", "stream",
