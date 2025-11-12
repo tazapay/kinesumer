@@ -739,7 +739,6 @@ func (k *Kinesumer) getNextShardIterator(ctx context.Context, stream, shardID st
 	log := logger.FromContext(ctx)
 
 	if iter, ok := k.nextIters[stream].Load(shardID); ok {
-		log.Debug("iterator found in cache", "shardID", shardID)
 		return iter.(*string), nil
 	}
 
@@ -762,7 +761,7 @@ func (k *Kinesumer) getNextShardIterator(ctx context.Context, stream, shardID st
 		}()
 
 	case (env.Get(env.Environment) != env.Prod && env.Get(env.Environment) != env.Sandbox &&
-		env.Get(env.Environment) != env.Amber) || cast.ToBool(env.Get(ctxIsRegionSwitch)):
+		env.Get(env.Environment) != env.Preprod) || cast.ToBool(env.Get(ctxIsRegionSwitch)):
 		log.Debug("checkpoint not found or DR switch occurred, using trim horizon config")
 		// If env is not prod or sandbox, use TRIM_HORIZON when sequence number is not found.
 		// or if it's region switch context, use TRIM_HORIZON to process/reprocess all records.
