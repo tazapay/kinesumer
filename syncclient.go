@@ -76,8 +76,6 @@ func (k *Kinesumer) syncShardInfo(ctx context.Context) error {
 		return errors.WithStack(err)
 	}
 
-	log.Info("syncing shard info", "clientIDs", clientIDs)
-
 	// Skip if there are no alive clients.
 	numOfClient := len(clientIDs)
 	if numOfClient == 0 {
@@ -159,6 +157,7 @@ func (k *Kinesumer) syncShardInfoForStream(
 
 	var seqMap map[string]string
 
+	// mechanism to sync shard check points with retry.
 	retry.Do(ctx, func() retry.Backoff {
 		r := retry.NewFibonacci(baseDelay)            // start with a small delay to avoid overloading the server
 		r = retry.WithJitterPercent(jitterPercent, r) // jitter to the backoff delays to avoid "thundering herd"
@@ -174,11 +173,12 @@ func (k *Kinesumer) syncShardInfoForStream(
 				return errors.WithStack(err)
 			}
 
+			// If there are no checkpoints, retry.
 			if len(seqMap) == 0 || (len(seqMap) == 1 && func() bool {
 				_, ok := seqMap[""]
 				return ok
 			}()) {
-				log.Info("Checkpoint found to be empty, retrying...", "checkpoint", seqMap)
+				log.Warn("Checkpoint found to be empty, retrying...", "checkpoint", seqMap)
 				return retry.RetryableError(ErrEmptySequenceNumber)
 			}
 
@@ -189,9 +189,9 @@ func (k *Kinesumer) syncShardInfoForStream(
 		_, ok := seqMap[""]
 		return ok
 	}()) {
-		log.Debug("no checkpoints or empty checkpoints present in the map,"+
+		log.Warn("no checkpoints or empty checkpoints present in the map,"+
 			" might use TRIM_HORIZON or AT_TIMESTAMP config",
-			"stream", stream, "shardIDs", shardIDs, "checkpoint", seqMap)
+			"stream", stream, "shardIDs", shardIDs, "checkpoints", seqMap)
 	} else {
 		log.Debug("found checkpoints for the stream", "stream",
 			stream, "count", len(seqMap), "checkpoints", seqMap)

@@ -41,10 +41,9 @@ const (
 
 // Error codes.
 var (
-	ErrEmptySequenceNumber    = errors.New("kinesumer: sequence number can't be empty")
-	ErrInvalidStream          = errors.New("kinesumer: invalid stream")
-	errEmptyCommitCheckpoints = errors.New("kinesumer: commit checkpoints can't be empty")
-	errMarkNilRecord          = errors.New("kinesumer: nil record can't be marked")
+	ErrEmptySequenceNumber = errors.New("kinesumer: sequence number can't be empty")
+	ErrInvalidStream       = errors.New("kinesumer: invalid stream")
+	errMarkNilRecord       = errors.New("kinesumer: nil record can't be marked")
 )
 
 // Config defines configs for the Kinesumer client.
@@ -366,10 +365,6 @@ func (k *Kinesumer) Consume(ctx context.Context, streams []string,
 	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
 
-	log.Debug("Logging the env variables",
-		"conv_is_region_switch", cast.ToBool(env.Get(ctxIsRegionSwitch)),
-		"raw_is_region_switch", env.Get(ctxIsRegionSwitch))
-
 	// In EFO mode, client should register itself to Kinesis stream.
 	if k.efoMode {
 		if err := k.registerConsumers(ctx); err != nil {
@@ -683,10 +678,7 @@ func (k *Kinesumer) consumeLoop(stream string, shard *Shard) {
 
 // It returns records & flag which is whether if shard is CLOSED state and has no remaining data.
 func (k *Kinesumer) consumeOnce(stream string, shard *Shard) ([]types.Record, bool) {
-	var (
-		ctx = context.Background()
-		log = logger.FromContext(ctx)
-	)
+	ctx := context.Background()
 
 	ctx, cancel := context.WithTimeout(ctx, k.scanTimeout)
 	defer cancel()
@@ -718,19 +710,21 @@ func (k *Kinesumer) consumeOnce(stream string, shard *Shard) ([]types.Record, bo
 	}
 	defer k.nextIters[stream].Store(shard.ID, output.NextShardIterator) // Update iter.
 
-	// set the shard closed state.
-	// If shard has no data, NextShardIterator will be nil.
-	// Reference: https://docs.aws.amazon.com/cli/latest/reference/kinesis/get-records.html#output
+	// set the shard state.
 	shard.Closed = output.NextShardIterator == nil
 
-	// when there's a consumer lag
-	if *output.MillisBehindLatest > 0 {
-		log.Info("Consumer is lagging behind to the latest",
-			"shard", shard.ID,
-			"lag_time_ms", *output.MillisBehindLatest)
-	}
+	// TODO:Will enable after proper testing
+	/*
+		// when there's a consumer lag
+		if *output.MillisBehindLatest > 0 {
+			log.Info("Consumer is lagging behind to the latest",
+				"shard", shard.ID,
+				"lag_time_ms", *output.MillisBehindLatest)
+		}
+	*/
 
-	// outer function has the empty records, so not needed to check it here.
+	// outer function has for loop ranging over records
+	// so no need to have a empty slice check.
 	return output.Records, shard.Closed
 }
 
@@ -771,7 +765,7 @@ func (k *Kinesumer) getNextShardIterator(ctx context.Context, stream, shardID st
 
 	default:
 		log.Debug("Checkpoint is not present and not a DR switch," +
-			" so moving the iterator 30 minutes behind")
+			" so moving the iterator 1 hour behind")
 		// if the checkpoint is not present for the shard and the env is Prod or Sandbox
 		// then move 1 hour behind the stream and consume from there
 		// This is to ensure we are not missing out events while not overload the system
