@@ -239,8 +239,6 @@ func (s *stateStore) RegisterClient(
 		return errors.WithStack(err)
 	}
 
-	log.Info("logging the client", "client", client, "item", item)
-
 	if _, err := s.db.client.PutItem(ctx, &dynamodb.PutItemInput{
 		Item:      item,
 		TableName: aws.String(s.db.table),
