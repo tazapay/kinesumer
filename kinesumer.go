@@ -36,7 +36,7 @@ const (
 	recordsChanBuffer = 20
 
 	// flag to identify DR switches, can be modified in the github
-	ctxIsRegionSwitch = "IS_REGION_SWITCH"
+	envIsRegionSwitch = "IS_REGION_SWITCH"
 )
 
 // Error codes.
@@ -755,7 +755,7 @@ func (k *Kinesumer) getNextShardIterator(ctx context.Context, stream, shardID st
 		}()
 
 	case (env.Get(env.Environment) != env.Prod && env.Get(env.Environment) != env.Sandbox) ||
-		cast.ToBool(env.Get(ctxIsRegionSwitch)):
+		cast.ToBool(env.Get(envIsRegionSwitch)):
 		log.Debug("checkpoint not found or DR switch occurred, using trim horizon config")
 		// If env is not prod or sandbox, use TRIM_HORIZON when sequence number is not found.
 		// or if it's region switch context, use TRIM_HORIZON to process/reprocess all records.
