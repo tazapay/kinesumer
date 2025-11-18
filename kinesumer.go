@@ -754,7 +754,8 @@ func (k *Kinesumer) getNextShardIterator(ctx context.Context, stream, shardID st
 			return &s
 		}()
 
-	case (env.Get(env.Environment) != env.Prod && env.Get(env.Environment) != env.Sandbox) ||
+	case (env.Get(env.Environment) != env.Prod && env.Get(env.Environment) != env.Sandbox &&
+		env.Get(env.Environment) != env.Orange) || // TODO: remove after testing
 		cast.ToBool(env.Get(envDRRegionSwitch)):
 		log.Debug("checkpoint not found or DR switch occurred, using trim horizon config")
 		// If env is not prod or sandbox, use TRIM_HORIZON when sequence number is not found.
