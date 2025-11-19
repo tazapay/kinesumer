@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/cast"
 	"github.com/tazapay/grpc-framework/client/session"
 	"github.com/tazapay/grpc-framework/env"
 	"github.com/tazapay/grpc-framework/logger"
@@ -33,14 +34,16 @@ const (
 	defaultScanInterval = 1 * time.Second
 
 	recordsChanBuffer = 20
+
+	// flag to identify DR switches, can be modified in the github
+	envDRRegionSwitch = "DR_REGION_SWITCH"
 )
 
 // Error codes.
 var (
-	ErrEmptySequenceNumber    = errors.New("kinesumer: sequence number can't be empty")
-	ErrInvalidStream          = errors.New("kinesumer: invalid stream")
-	errEmptyCommitCheckpoints = errors.New("kinesumer: commit checkpoints can't be empty")
-	errMarkNilRecord          = errors.New("kinesumer: nil record can't be marked")
+	ErrEmptySequenceNumber = errors.New("kinesumer: sequence number can't be empty")
+	ErrInvalidStream       = errors.New("kinesumer: invalid stream")
+	errMarkNilRecord       = errors.New("kinesumer: nil record can't be marked")
 )
 
 // Config defines configs for the Kinesumer client.
@@ -354,9 +357,7 @@ func (k *Kinesumer) listShards(stream string) (Shards, error) {
 }
 
 // Consume consumes messages from Kinesis.
-func (k *Kinesumer) Consume(
-	ctx context.Context,
-	streams []string,
+func (k *Kinesumer) Consume(ctx context.Context, streams []string,
 ) (<-chan *Record, error) {
 	log := logger.FromContext(ctx)
 	k.streams = streams
@@ -651,15 +652,8 @@ func (k *Kinesumer) consumeLoop(stream string, shard *Shard) {
 		default:
 			time.Sleep(k.scanInterval)
 			records, closed := k.consumeOnce(stream, shard)
-			if closed {
-				k.cleanupOffsets(stream, shard)
-				return // Close consume loop if shard is CLOSED and has no data.
-			}
 
 			n := len(records)
-			if n == 0 {
-				continue
-			}
 
 			for i, record := range records {
 				r := &Record{
@@ -673,6 +667,11 @@ func (k *Kinesumer) consumeLoop(stream string, shard *Shard) {
 					k.MarkRecord(r)
 				}
 			}
+
+			if closed {
+				k.cleanupOffsets(stream, shard)
+				return // Close consume loop if shard is CLOSED and has no data.
+			}
 		}
 	}
 }
@@ -680,6 +679,7 @@ func (k *Kinesumer) consumeLoop(stream string, shard *Shard) {
 // It returns records & flag which is whether if shard is CLOSED state and has no remaining data.
 func (k *Kinesumer) consumeOnce(stream string, shard *Shard) ([]types.Record, bool) {
 	ctx := context.Background()
+
 	ctx, cancel := context.WithTimeout(ctx, k.scanTimeout)
 	defer cancel()
 
@@ -710,18 +710,28 @@ func (k *Kinesumer) consumeOnce(stream string, shard *Shard) ([]types.Record, bo
 	}
 	defer k.nextIters[stream].Store(shard.ID, output.NextShardIterator) // Update iter.
 
-	n := len(output.Records)
-	// We no longer care about shards that have no records left and are in the "CLOSED" state.
-	if n == 0 {
-		return nil, shard.Closed
-	}
+	// set the shard state.
+	shard.Closed = output.NextShardIterator == nil
 
-	return output.Records, false
+	// TODO:Will enable after proper testing
+	/*
+		// when there's a consumer lag
+		if *output.MillisBehindLatest > 0 {
+			log.Info("Consumer is lagging behind to the latest",
+				"shard", shard.ID,
+				"lag_time_ms", *output.MillisBehindLatest)
+		}
+	*/
+
+	// outer function has for loop ranging over records
+	// so no need to have a empty slice check.
+	return output.Records, shard.Closed
 }
 
-func (k *Kinesumer) getNextShardIterator(
-	ctx context.Context, stream, shardID string,
+func (k *Kinesumer) getNextShardIterator(ctx context.Context, stream, shardID string,
 ) (*string, error) {
+	log := logger.FromContext(ctx)
+
 	if iter, ok := k.nextIters[stream].Load(shardID); ok {
 		return iter.(*string), nil
 	}
@@ -730,12 +740,39 @@ func (k *Kinesumer) getNextShardIterator(
 		StreamARN: aws.String(stream),
 		ShardId:   aws.String(shardID),
 	}
-	if seq, ok := k.checkPoints[stream].Load(shardID); ok {
+
+	seq, ok := k.checkPoints[stream].Load(shardID)
+
+	switch {
+	case ok:
+		log.Debug("checkpoint found, creating new iterator", "checkpoint", cast.ToString(seq))
+		// if checkpoint found in the in-memory cache, then use that sequence number
+		// and proceed with the consumption
 		input.ShardIteratorType = types.ShardIteratorTypeAfterSequenceNumber
-		seqNo := seq.(string)
-		input.StartingSequenceNumber = &seqNo
-	} else {
+		input.StartingSequenceNumber = func() *string {
+			s := cast.ToString(seq)
+			return &s
+		}()
+
+	case (env.Get(env.Environment) != env.Prod && env.Get(env.Environment) != env.Sandbox) ||
+		cast.ToBool(env.Get(envDRRegionSwitch)):
+		log.Debug("checkpoint not found or DR switch occurred, using trim horizon config")
+		// If env is not prod or sandbox, use TRIM_HORIZON when sequence number is not found.
+		// or if it's region switch context, use TRIM_HORIZON to process/reprocess all records.
+		// This is to support DR executions
 		input.ShardIteratorType = types.ShardIteratorTypeTrimHorizon
+
+	default:
+		log.Debug("Checkpoint is not present and not a DR switch," +
+			" so moving the iterator 1 hour behind")
+		// if the checkpoint is not present for the shard and the env is Prod or Sandbox
+		// then move 1 hour behind the stream and consume from there
+		// This is to ensure we are not missing out events while not overload the system
+		input.ShardIteratorType = types.ShardIteratorTypeAtTimestamp
+		input.Timestamp = func() *time.Time {
+			t := time.Now().Add(-1 * time.Hour)
+			return &t
+		}()
 	}
 
 	output, err := k.client.GetShardIterator(ctx, input)

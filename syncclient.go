@@ -8,7 +8,16 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sethvargo/go-retry"
 	"github.com/tazapay/grpc-framework/logger"
+)
+
+// backoff config (extended values, since connection creation has part of service uptime)
+const (
+	baseDelay     = 100 * time.Millisecond
+	maxDuration   = 1 * time.Minute
+	maxRetries    = 3
+	jitterPercent = 30 // between 25 and 50
 )
 
 func (k *Kinesumer) loopSyncClient() {
@@ -66,8 +75,6 @@ func (k *Kinesumer) syncShardInfo(ctx context.Context) error {
 		log.Error("failed to list alive clients", err)
 		return errors.WithStack(err)
 	}
-
-	log.Info("syncing shard info", "clientIDs", clientIDs)
 
 	// Skip if there are no alive clients.
 	numOfClient := len(clientIDs)
@@ -148,11 +155,46 @@ func (k *Kinesumer) syncShardInfoForStream(
 		return true
 	})
 
-	// Sync shard check points.
-	seqMap, err := k.stateStore.ListCheckPoints(ctx, stream, shardIDs)
-	if err != nil {
-		log.Error("failed to list check points", err)
-		return errors.WithStack(err)
+	var seqMap map[string]string
+
+	// mechanism to sync shard check points with retry.
+	retry.Do(ctx, func() retry.Backoff {
+		r := retry.NewFibonacci(baseDelay)            // start with a small delay to avoid overloading the server
+		r = retry.WithJitterPercent(jitterPercent, r) // jitter to the backoff delays to avoid "thundering herd"
+		r = retry.WithMaxRetries(maxRetries, r)       // terminate a retry after Nth attempt
+
+		return r
+	}(),
+		func(ctx context.Context) error {
+			// Sync shard check points.
+			seqMap, err = k.stateStore.ListCheckPoints(ctx, stream, shardIDs)
+			if err != nil {
+				log.Error("failed to list check points", err)
+				return errors.WithStack(err)
+			}
+
+			// If there are no checkpoints, retry.
+			if len(seqMap) == 0 || (len(seqMap) == 1 && func() bool {
+				_, ok := seqMap[""]
+				return ok
+			}()) {
+				log.Warn("Checkpoint found to be empty, retrying...", "checkpoint", seqMap)
+				return retry.RetryableError(ErrEmptySequenceNumber)
+			}
+
+			return nil
+		})
+
+	if len(seqMap) == 0 || (len(seqMap) == 1 && func() bool {
+		_, ok := seqMap[""]
+		return ok
+	}()) {
+		log.Warn("no checkpoints or empty checkpoints present in the map,"+
+			" might use TRIM_HORIZON or AT_TIMESTAMP config",
+			"stream", stream, "shardIDs", shardIDs, "checkpoints", seqMap)
+	} else {
+		log.Debug("found checkpoints for the stream", "stream",
+			stream, "count", len(seqMap), "checkpoints", seqMap)
 	}
 
 	if _, ok := k.checkPoints[stream]; !ok {
